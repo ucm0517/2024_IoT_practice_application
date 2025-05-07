@@ -78,8 +78,8 @@ void Servo_Open(void) {
     softPwmWrite(SERVO_PIN, 15);   // 서보 모터 원래 상태로 복귀
 }
 
-// 경쾌한 소리 재생 함수
-void PlayCheerfulSound(void) {
+// 경쾌한 소리 재생 함수(도어락 열릴 때)
+void PlaySuccessfulSound(void) {
     int melody[] = { DO_H, SOL, MI, SOL, DO_H };
     int length = sizeof(melody) / sizeof(melody[0]);
 
@@ -144,7 +144,7 @@ void playSoundForKey(char key) {
     }
 }
 
-// LCD 메뉴 표시 함수 (두 줄씩 표시, 순환)
+// LCD 메뉴 표시 함수 (12, 23, 34 메뉴 출력 스크롤)
 void displayMenu() {
     lcdClear(lcdHandle);
     lcdPosition(lcdHandle, 0, 0);
@@ -175,7 +175,7 @@ void scrollMenu() {
 }
 
 /*
-// LCD 메뉴 표시 함수 (두 줄씩 표시, 순환)
+// LCD 메뉴 표시 함수(12, 23, 34, 41메뉴 출력 스크롤)
 void displayMenu() {
     lcdClear(lcdHandle);
 
@@ -208,7 +208,8 @@ void processPasswordInput(char key, int offset) {
         inputPassword[inputIndex++] = key;
 
         // LCD에 "*" 표시
-        lcdPosition(lcdHandle, offset + inputIndex - 1, 1);  // 입력 위치를 offset으로 조정  As is가 지워지는 문제를 해결하기 위해 As is: **** 정상적인 출력을 위해
+        lcdPosition(lcdHandle, offset + inputIndex - 1, 1);  //초기화된 핸들, 열, 행
+        // 입력 위치를 offset으로 조정  As is가 지워지는 문제를 해결하기 위해 As is: **** 정상적인 출력을 위해
         lcdPutchar(lcdHandle, '*');   
 
         playSoundForKey(key);  // 각 키의 고유 음 재생
@@ -290,26 +291,26 @@ void executeMenuOption(int menuOption) {
         inputIndex = 0;
         memset(inputPassword, 0, sizeof(inputPassword));
 
-        // 비밀번호 입력 및 검증 루프
-        while (inputIndex < 4) {
+        // 비밀번호 입력 및 E 키 확인 루프
+        while (1) {
             char key = readKeypad();
-            if (key >= '0' && key <= '9') {
-            processPasswordInput(key, 0);  // Input PW의 경우 offset을 0으로
+            if (key >= '0' && key <= '9' && inputIndex < 4) {
+                processPasswordInput(key, 0);  // Input PW의 경우 offset을 0으로
+            } else if (key == 'E' && inputIndex == 4) { // E 키를 눌렀을 때만 확인
+                playSoundForKey('E'); // E 키 눌렀을 때 소리 재생
+                int result = checkPassword(1);
+                if (result == 1) {  // 성공 시
+                    lcdClear(lcdHandle);
+                    lcdPuts(lcdHandle, "Door opened");
+                    PlaySuccessfulSound();
+                    Servo_Open();
+                    displayMenu();
+                } else if (result == 0) {
+                    executeMenuOption(1);  // 실패 시 다시 비밀번호 입력
+                }
+                break;  // 비밀번호 입력 종료
             }
         }
-        
-        // 비밀번호 확인
-        int result = checkPassword(1);
-        if (result == 1) {  // 성공 시
-            lcdClear(lcdHandle);
-            lcdPuts(lcdHandle, "Door opened");
-            PlayCheerfulSound();
-            Servo_Open();
-            displayMenu();
-        } else if (result == 0) {
-            executeMenuOption(1);  // 실패 시 다시 비밀번호 입력
-        }
-        // result가 -1이면 메뉴로 복귀
         break;
 
     case 2:  // Set PW
@@ -322,13 +323,31 @@ void executeMenuOption(int menuOption) {
         }
         lcdPuts(lcdHandle, "Set new PW:");
         delay(500);
-        while (inputIndex < 4) {
+        inputIndex = 0;
+        memset(inputPassword, 0, sizeof(inputPassword));
+
+        // 비밀번호 설정 및 E 키 확인 루프
+        while (1) {
             char key = readKeypad();
-            if (key >= '0' && key <= '9') {
-            processPasswordInput(key, 0);  // Input PW의 경우 offset을 0으로
+            if (key >= '0' && key <= '9' && inputIndex < 4) {
+                processPasswordInput(key, 0);  // Set PW의 경우 offset을 0으로
+            } else if (key == 'E') {  // E 키를 눌렀을 때
+                playSoundForKey('E'); // E 키 눌렀을 때 소리 재생
+                if (inputIndex == 4) {  // 4자리 비밀번호가 정확히 입력되었을 때만 설정
+                    setPassword();
+                    break;
+                } else {  // 4자리가 입력되지 않은 상태에서 E를 눌렀을 경우
+                    lcdClear(lcdHandle);
+                    lcdPuts(lcdHandle, "Invalid password");
+                    delay(1000);
+                    lcdClear(lcdHandle);
+                    lcdPuts(lcdHandle, "Set new PW:");
+                    delay(500);
+                    inputIndex = 0;
+                    memset(inputPassword, 0, sizeof(inputPassword));
+                }
             }
         }
-        setPassword();
         break;
 
         case 3:  // Change PW
